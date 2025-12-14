@@ -1,0 +1,21 @@
+{
+  "build": {
+    "preview": {
+      "android": {
+        "buildType": "apk",
+        "env": {
+          "EXPO_NO_CAPABILITY_SYNC": "1"
+        }
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease",
+        "env": {
+          "EXPO_NO_CAPABILITY_SYNC": "1"
+        }
+      }
+    }
+  }
+}

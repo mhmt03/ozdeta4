@@ -1,0 +1,20 @@
+
+-------------------------------------------------------------------------------
+   ROBOCOPY     ::     Robust File Copy for Windows                              
+-------------------------------------------------------------------------------
+
+  Started : 11 Aralçk 2025 Perüembe 21:45:06
+   Source : C:\Users\Mehmet\OneDrive\Desktop\react\ozdeta3\ozdeta3c\ C:\Users\Mehmet\OneDrive\Desktop\react\ozdeta3\ozdeta3c\
+     Dest : C:\Users\Mehmet\Projects\ozdeta3c\
+
+    Files : *.*
+	    
+ Exc Dirs : node_modules
+	    .git
+	    
+  Options : *.* /V /S /E /DCOPY:DA /COPY:DAT /R:3 /W:5 
+
+------------------------------------------------------------------------------
+
+2025/12/11 21:45:06 ERROR 123 (0x0000007B) Accessing Source Directory C:\Users\Mehmet\OneDrive\Desktop\react\ozdeta3\ozdeta3c\ C:\Users\Mehmet\OneDrive\Desktop\react\ozdeta3\ozdeta3c\
+Dosya adç, dizin adç veya birim etiketi sîzdizimi hatalç.
