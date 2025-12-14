@@ -1,8 +1,8 @@
 
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, Image } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, Image, Alert, BackHandler } from 'react-native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons, FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { ogrencininOdemeleri, tekOgrenci, tumYapilanDersler } from '../utils/database';
 import { tarihAraligiAjandaGetir } from '../utils/ajandaDatabase';
@@ -78,7 +78,7 @@ export default function AnaSayfa() {
     }, [aktifTarih]);
 
     useEffect(() => {
-        // Son yapılan dersler 
+        // Son yapılan dersler - Sayfa odaklandığında otomatik yenilenir
         const asyncFonksion = async () => {
             try {
                 const yapilanDersler = await tumYapilanDersler();
@@ -89,8 +89,25 @@ export default function AnaSayfa() {
             }
         }
         asyncFonksion();
-    }, []);
+    }, []); // Boş dependency array - sadece component mount olduğunda çalışır
 
+    // Sayfa odaklandığında ders listesini yenile
+    useFocusEffect(
+        React.useCallback(() => {
+            // Sayfa odaklandığında ders listesini yenile
+            const yenileDersListesi = async () => {
+                try {
+                    const yapilanDersler = await tumYapilanDersler();
+                    setSonDersler(yapilanDersler.yapilanDersler);
+                    console.log("Ders listesi yenilendi (focus effect)");
+                } catch (error) {
+                    console.error("Ders listesi yenileme hatası:", error);
+                }
+            };
+
+            yenileDersListesi();
+        }, [])
+    );
     // Tarih fonksiyonu
     const getTodayDate = () => {
         const today = new Date();
@@ -144,6 +161,27 @@ export default function AnaSayfa() {
             <View style={styles.header}>
 
                 <Text style={styles.headerDate}>{getTodayDate()}</Text>
+                {/* Kapat Butonu - Uygulamayı kapatmak için kullanılır */}
+                <TouchableOpacity
+                    style={styles.closeButton}
+                    onPress={() => {
+                        // Kullanıcıya çıkış onayı sor
+                        // Alert.alert ile onay dialog'u gösterilir
+                        Alert.alert(
+                            'Uygulamayı Kapat', // Dialog başlığı
+                            'Uygulamayı kapatmak istediğinizden emin misiniz?', // Dialog mesajı
+                            [
+                                { text: 'İptal', style: 'cancel' }, // İptal butonu - hiçbir şey yapma
+                                {
+                                    text: 'Kapat', // Onay butonu
+                                    onPress: () => BackHandler.exitApp() // React Native BackHandler ile uygulamayı kapat
+                                }
+                            ]
+                        );
+                    }}
+                >
+                    <MaterialIcons name="close" size={24} color="white" />
+                </TouchableOpacity>
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -260,6 +298,14 @@ const styles = StyleSheet.create({
         borderBottomLeftRadius: 20,
         borderBottomRightRadius: 20,
         marginBottom: 20,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    closeButton: {
+        padding: 8,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        borderRadius: 20,
     },
     headerTitle: {
         fontSize: 24,

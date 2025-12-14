@@ -160,37 +160,38 @@ export default function OgrenciDetay() {
             Alert.alert('Hata', 'Ödeme kaydedilemedi: ' + error.message);
         }
     };
-    //ders kaydetme
+    //ders kaydetme - Öğrenciye yapılan dersi veritabanına kaydeder
     const dersKaydet = async () => {
-
+        // Ders konusu boş ise varsayılan değer ata
         if (!dersKonu.trim()) {
             setDersKonu("Konu Girilmemiş");
         }
 
         try {
-
+            // Ders verilerini hazırla - veritabanına gönderilecek format
             const dersVerisi = {
-                ogrenciId: ogrenci.ogrenciId,
-                dersturu: 'Ders', // Varsayılan değer
-                konu: dersKonu ?? 'konu yok',
-                tarih: dersTarih.toISOString().split('T')[0], // YYYY-MM-DD formatı
-                saat: dersSaat.toTimeString().split(' ')[0], // HH:MM:SS formatı
-                ucret: dersUcret,
-                sutun1: dersAciklama,
-                ogrenciAdSoyad: ogrenci.ogrenciAd + " " + ogrenci.ogrenciSoyad
+                ogrenciId: ogrenci.ogrenciId, // Öğrencinin benzersiz ID'si
+                dersturu: 'Ders', // Ders türü (şimdilik sabit)
+                konu: dersKonu ?? 'konu yok', // Ders konusu, null ise varsayılan
+                tarih: dersTarih.toISOString().split('T')[0], // YYYY-MM-DD formatında tarih
+                saat: dersSaat.toTimeString().split(' ')[0], // HH:MM:SS formatında saat
+                ucret: dersUcret, // Ders ücreti
+                sutun1: dersAciklama, // Ek açıklama
+                ogrenciAdSoyad: ogrenci.ogrenciAd + " " + ogrenci.ogrenciSoyad // Öğrenci adı soyadı
             };
 
-            console.log('Kaydedilecek ders verisi:', dersVerisi);
+            console.log('Kaydedilecek ders verisi:', dersVerisi); // Debug için log
 
-            // TODO: Database'e kaydetme işlemi burada yapılacak
+            // Veritabanına kaydet - dersiKaydet fonksiyonunu çağır
             const result = await dersiKaydet(dersVerisi);
 
+            // Başarılı kayıt sonrası popup göster
             Alert.alert('Başarılı', 'Ders başarıyla kaydedildi', [
-                { text: 'Tamam', onPress: dersPopupKapat }
+                { text: 'Tamam', onPress: dersPopupKapat } // Popup kapat ve ana sayfaya dön
             ]);
         } catch (error) {
-            console.log("ders kaydedilmedi");
-            Alert.alert('Hata', 'Ders kaydedilemedi: ' + error.message);
+            console.log("ders kaydedilmedi"); // Hata log
+            Alert.alert('Hata', 'Ders kaydedilemedi: ' + error.message); // Kullanıcıya hata göster
         }
     };
     // Tarih formatını güzelleştirme

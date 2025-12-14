@@ -5,7 +5,7 @@ import * as SQLite from 'expo-sqlite';
 let db = null;
 
 // VERİTABANI VERSİYONU - Değişiklik yaptığınızda sadece bunu artırın!
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 
 export async function initDatabase() {
     try {
@@ -103,15 +103,28 @@ async function applyMigration(version) {
             await db.execAsync(tabloOlusturucuV1);
             break;
 
-        // case 2:
-        //     // Versiyon 2 değişiklikleri
+        case 2:
+            // Versiyon 2 - dersler tablosuna sutun1 ekleme
+            try {
+                await db.execAsync(`ALTER TABLE dersler ADD COLUMN sutun1 TEXT;`);
+                console.log('dersler tablosuna sutun1 eklendi');
+            } catch (error) {
+                // Eğer sütun zaten varsa hata verme
+                if (!error.message.includes('duplicate column name')) {
+                    throw error;
+                }
+            }
+            break;
+
+        // case 3:
+        //     // Versiyon 3 değişiklikleri
         //     await db.execAsync(`
         //         ALTER TABLE ogrenciler ADD COLUMN yeniSutun TEXT DEFAULT 'varsayilan';
         //     `);
         //     break;
 
-        // case 3:
-        //     // Versiyon 3 değişiklikleri
+        // case 4:
+        //     // Versiyon 4 değişiklikleri
         //     await db.execAsync(`
         //         CREATE TABLE IF NOT EXISTS yeni_tablo (
         //             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -297,8 +310,8 @@ export async function dersiKaydet(dersVerisi) {
         const database = await initDatabase();
 
         await database.runAsync(
-            `INSERT INTO dersler (ogrenciId, tarih, saat, ucret,konu,dersturu,ogrenciAdSoyad) VALUES (?,? ?, ?, ?,?,?)`,
-            [dersVerisi.ogrenciId, dersVerisi.tarih, dersVerisi.saat, dersVerisi.ucret, dersVerisi.konu, dersVerisi.dersturu, dersVerisi.ogrenciAdSoyad]
+            `INSERT INTO dersler (ogrenciId, tarih, saat, ucret, konu, dersturu, ogrenciAdSoyad, sutun1) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [dersVerisi.ogrenciId, dersVerisi.tarih, dersVerisi.saat, dersVerisi.ucret, dersVerisi.konu, dersVerisi.dersturu, dersVerisi.ogrenciAdSoyad, dersVerisi.sutun1]
         );
 
         console.log("✅ Ders başarıyla kaydedildi!");
@@ -590,6 +603,7 @@ CREATE TABLE IF NOT EXISTS dersler (
     tarih TEXT,
     ucret TEXT,
     ogrenciAdSoyad TEXT,
+    sutun1 TEXT,
     sutun2 TEXT,
     sutun3 TEXT,
     sutun4 TEXT,

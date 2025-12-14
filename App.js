@@ -25,41 +25,50 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [permissionGranted, setPermissionGranted] = useState(false);
 
-  // Dosya izinlerini kontrol et ve iste
+  // Dosya izinlerini kontrol et ve iste - DÜZELTİLDİ
+  // Bu fonksiyon uygulama başlatıldığında dosya erişim izinlerini kontrol eder
+  // Android'de dosya kaydetme/paylaşma işlemleri için gereklidir
   const checkAndRequestPermissions = async () => {
     try {
       if (Platform.OS === 'android') {
-        // Android 13+ için özel izin kontrolü
+        // Android platform kontrolü - sadece Android'de dosya izinleri gerekli
+
+        // Android 13+ (API 33+) için yeni scoped storage sistemi
         if (Platform.Version >= 33) {
-          // Android 13+ için MANAGE_EXTERNAL_STORAGE izni gerekli değil
-          // Scoped storage kullanılır
-          setPermissionGranted(true);
-          return true;
-        }
+          // StorageAccessFramework kullanarak dizin erişimi iste
+          // Bu, kullanıcıdan belirli bir klasör seçmesini ister
+          const { status } = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
 
-        // Android 13 öncesi için
-        const { status } = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-
-        if (status === 'granted') {
-          setPermissionGranted(true);
-          return true;
+          if (status === 'granted') {
+            // İzin verildi - dosya işlemleri yapılabilir
+            setPermissionGranted(true);
+            return true;
+          } else {
+            // İzin reddedildi - kullanıcıyı bilgilendir
+            Alert.alert(
+              'İzin Gerekli',
+              'Uygulamanın düzgün çalışması için dosya erişim izni gereklidir.',
+              [{ text: 'Tamam' }]
+            );
+            setPermissionGranted(false);
+            return false;
+          }
         } else {
-          Alert.alert(
-            'İzin Gerekli',
-            'Uygulamanın düzgün çalışması için depolama izni gereklidir.',
-            [{ text: 'Tamam' }]
-          );
-          setPermissionGranted(false);
-          return false;
+          // Android 13 öncesi sürümler için
+          // READ/WRITE_EXTERNAL_STORAGE izinleri app.json'da tanımlanmış
+          // Expo otomatik olarak bu izinleri yönetir
+          setPermissionGranted(true);
+          return true;
         }
       } else {
-        // iOS için izin kontrolü gerekli değil
+        // iOS için dosya izinleri gerekli değildir
+        // iOS'ta uygulama sandbox'ı içinde işlemler yapılır
         setPermissionGranted(true);
         return true;
       }
     } catch (error) {
       console.error('İzin kontrolü hatası:', error);
-      // Hata durumunda da devam et (çoğu durumda izin gerekli değil)
+      // Hata durumunda varsayılan olarak izin ver (kritik olmayan işlemler için)
       setPermissionGranted(true);
       return true;
     }

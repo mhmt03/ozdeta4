@@ -117,7 +117,10 @@ export default function AjandaKayitEkle() {
         // date undefined olabilir (iptal durumu)
         if (date) {
             if (showDatePicker) {
-                setSelectedDate(date);
+                // Tarih seçildiğinde saat dilimi sorununu önlemek için
+                // sadece yıl, ay, gün bilgilerini al
+                const newDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                setSelectedDate(newDate);
             } else if (showTimePicker) {
                 setSelectedTime(date);
             }
@@ -211,7 +214,6 @@ export default function AjandaKayitEkle() {
             // Saat formatını hazırla
             const saatStr = `${selectedTime.getHours().toString().padStart(2, '0')}:${selectedTime.getMinutes().toString().padStart(2, '0')}`;
 
-            selectedDate.setDate(selectedDate.getDate() + 1); //seçili tarihe indis yüzünden 1 ekledim
             // Periyodik kayıtları oluşturma döngüsü
             for (let i = 0; i < tekrarSayisi; i++) {
 
@@ -253,7 +255,7 @@ export default function AjandaKayitEkle() {
             // Başarılı kayıt sonrası işlemler
             Alert.alert(
                 'Başarılı',
-                `${tekrarSayisi} adet randevu kaydedildi\n\nİlk randevu: ${selectedDate.toLocaleDateString('tr-TR')}\nSon randevu: ${new Date(selectedDate.getTime() + ((tekrarSayisi - 1) * periyot * 24 * 60 * 60 * 1000)).toLocaleDateString('tr-TR')}`,
+                `${tekrarSayisi} adet randevu kaydedildi\n\nİlk randevu: ${selectedDate.toLocaleDateString('tr-TR')}\nSon randevu: ${new Date(selectedDate.getTime() + ((tekrarSayisi - 1) * (periyot - 1) * 24 * 60 * 60 * 1000)).toLocaleDateString('tr-TR')}`,
                 [
                     {
                         text: 'Tamam',

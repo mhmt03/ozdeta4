@@ -47,9 +47,14 @@ export default function AjandaRandevuDuzenle({ route, navigation }) {
 
     const handleKaydet = async () => {
         try {
+            // Tarihi YYYY-MM-DD formatında al (local timezone)
+            const tarihStr = date.getFullYear() + '-' +
+                String(date.getMonth() + 1).padStart(2, '0') + '-' +
+                String(date.getDate()).padStart(2, '0');
+
             await ajandaGuncelle({
                 ...randevu,
-                tarih: date.toISOString().split('T')[0],
+                tarih: tarihStr,
                 saat: date.toTimeString().slice(0, 5),
                 ogrenciId: ogrenciTip === 'kayitli' ? selectedOgrenci : null,
                 ogrAdsoyad: ogrenciTip === 'kayıtsız' ? kayıtsızInput : '',
@@ -111,7 +116,19 @@ export default function AjandaRandevuDuzenle({ route, navigation }) {
                         display="default"
                         onChange={(e, selectedDate) => {
                             setShowDatePicker(false);
-                            if (selectedDate) setDate(new Date(date.setFullYear(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate())));
+                            if (selectedDate) {
+                                // Seçilen tarihi koru, saat bilgisini değiştirme
+                                const newDate = new Date(
+                                    selectedDate.getFullYear(),
+                                    selectedDate.getMonth(),
+                                    selectedDate.getDate(),
+                                    date.getHours(),
+                                    date.getMinutes(),
+                                    0,
+                                    0
+                                );
+                                setDate(newDate);
+                            }
                         }}
                     />
                 )}

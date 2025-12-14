@@ -17,8 +17,20 @@ import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as FileSystem from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
+import * as MediaLibrary from 'expo-media-library';
+import * as Sharing from 'expo-sharing';
 import { useNavigation } from '@react-navigation/native';
-import * as XLSX from 'xlsx';
+
+// Array buffer'ı base64'e çeviren yardımcı fonksiyon
+function arrayBufferToBase64(buffer) {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+}
 
 // Veritabanı fonksiyonları
 import {
@@ -285,38 +297,65 @@ export default function Ayarlar() {
                                     encoding: FileSystem.EncodingType.Base64
                                 });
 
-                                // Doğrudan uygulama klasörüne kaydet
-                                const result = await dosyayiDirektKaydet(
-                                    yedekDosyaAdi,
-                                    dbContent,
-                                    'application/x-sqlite3'
-                                );
+                                // Downloads klasörüne kaydet - Android için MediaLibrary kullan
+                                if (Platform.OS === 'android') {
+                                    try {
+                                        const { status } = await MediaLibrary.requestPermissionsAsync();
+                                        if (status === 'granted') {
+                                            // Geçici dosyayı oluştur
+                                            const tempPath = FileSystem.cacheDirectory + yedekDosyaAdi;
+                                            await FileSystem.writeAsStringAsync(tempPath, dbContent, {
+                                                encoding: FileSystem.EncodingType.Base64
+                                            });
 
-                                if (result.success) {
-                                    // Kaydetme başarılı, paylaşım seçeneği sun
-                                    Alert.alert(
-                                        'Yedekleme Başarılı',
-                                        result.message,
-                                        [
-                                            {
-                                                text: 'Tamam',
-                                                onPress: () => console.log('Yedekleme tamamlandı')
-                                            },
-                                            {
-                                                text: 'Paylaş',
-                                                onPress: async () => {
-                                                    if (await Sharing.isAvailableAsync()) {
-                                                        await Sharing.shareAsync(result.dosyaYolu, {
-                                                            mimeType: 'application/x-sqlite3',
-                                                            dialogTitle: 'Veritabanı Yedek Dosyası'
-                                                        });
-                                                    }
-                                                }
+                                            // MediaLibrary ile Downloads klasörüne kaydet
+                                            const asset = await MediaLibrary.createAssetAsync(tempPath);
+                                            const albums = await MediaLibrary.getAlbumsAsync();
+                                            let downloadsAlbum = albums.find(album => album.title === 'Downloads');
+
+                                            if (!downloadsAlbum) {
+                                                downloadsAlbum = await MediaLibrary.createAlbumAsync('Downloads', asset, false);
+                                            } else {
+                                                await MediaLibrary.addAssetsToAlbumAsync([asset], downloadsAlbum, false);
                                             }
-                                        ]
-                                    );
+
+                                            // Geçici dosyayı temizle
+                                            await FileSystem.deleteAsync(tempPath, { idempotent: true });
+
+                                            Alert.alert(
+                                                'Yedekleme Başarılı',
+                                                `Veritabanı Downloads/ozdeta klasörüne "${yedekDosyaAdi}" olarak kaydedildi.`,
+                                                [{ text: 'Tamam' }]
+                                            );
+                                        } else {
+                                            Alert.alert('Hata', 'Dosya erişim izni verilmedi');
+                                        }
+                                    } catch (mediaError) {
+                                        console.error('MediaLibrary hatası:', mediaError);
+                                        // Fallback: uygulama klasörüne kaydet
+                                        const result = await dosyayiDirektKaydet(
+                                            yedekDosyaAdi,
+                                            dbContent,
+                                            'application/x-sqlite3'
+                                        );
+                                        if (result.success) {
+                                            Alert.alert('Yedekleme Başarılı', result.message);
+                                        } else {
+                                            Alert.alert('Hata', result.error || 'Yedekleme başarısız');
+                                        }
+                                    }
                                 } else {
-                                    Alert.alert('Hata', result.error || 'Dosya kaydedilemedi');
+                                    // iOS için uygulama klasörüne kaydet
+                                    const result = await dosyayiDirektKaydet(
+                                        yedekDosyaAdi,
+                                        dbContent,
+                                        'application/x-sqlite3'
+                                    );
+                                    if (result.success) {
+                                        Alert.alert('Yedekleme Başarılı', result.message);
+                                    } else {
+                                        Alert.alert('Hata', result.error || 'Yedekleme başarısız');
+                                    }
                                 }
 
                             } catch (error) {
@@ -412,136 +451,170 @@ export default function Ayarlar() {
 
     /**
      * Excel raporu oluşturma fonksiyonu - DÜZELTİLDİ
+     * Bu fonksiyon ders, öğrenci ve borç bilgilerini Excel dosyası olarak oluşturur
+     * Kullanılan kütüphane: xlsx (SheetJS)
+     * Dosya formatı: .xlsx (Excel 2007+)
      */
     const excelRaporOlustur = async () => {
         try {
-            setLoading(true);
+            setLoading(true); // Yükleme göstergesini başlat
 
+            // Tarih aralıklarını string formatına çevir (YYYY-MM-DD)
             const baslangicStr = baslangicTarihi.toISOString().split('T')[0];
             const bitisStr = bitisTarihi.toISOString().split('T')[0];
 
-            const derslerResult = await tumYapilanDersler();
-            const ogrencilerResult = await ogrencileriListele(true);
+            // Veritabanından ders ve öğrenci verilerini çek
+            const derslerResult = await tumYapilanDersler(); // Tüm dersleri getir
+            const ogrencilerResult = await ogrencileriListele(true); // Tüm öğrencileri getir (aktif/pasif)
 
+            // Veri çekme başarısız olursa hata göster
             if (!derslerResult.success || !ogrencilerResult.success) {
                 Alert.alert('Hata', 'Veriler alınamadı');
                 return;
             }
 
+            // Verileri değişkenlere ata (varsayılan boş dizi)
             const tumDersler = derslerResult.yapilanDersler || [];
             const tumOgrenciler = ogrencilerResult.data || [];
 
             // Tarih aralığına göre dersleri filtrele
             const filtreliDersler = tumDersler.filter(ders => {
-                const dersTarihi = new Date(ders.tarih);
-                const baslangic = new Date(baslangicStr);
-                const bitis = new Date(bitisStr);
-                return dersTarihi >= baslangic && dersTarihi <= bitis;
+                const dersTarihi = new Date(ders.tarih); // Ders tarihini Date objesine çevir
+                const baslangic = new Date(baslangicStr); // Başlangıç tarihini Date'e çevir
+                const bitis = new Date(bitisStr); // Bitiş tarihini Date'e çevir
+                return dersTarihi >= baslangic && dersTarihi <= bitis; // Tarih aralığında mı kontrol et
             });
 
-            // Excel Workbook oluştur
-            const workbook = XLSX.utils.book_new();
+            // Excel Workbook oluştur (xlsx kütüphanesi ile)
+            const workbook = XLSX.utils.book_new(); // Yeni workbook oluştur
 
-            // DERSLER sayfası
+            // DERSLER sayfası - Veri hazırlama
+            // Başlık ve tarih bilgileri ile başla
             const derslerData = [
-                ['DERS RAPORU'],
-                [`Tarih Aralığı: ${baslangicStr} - ${bitisStr}`],
-                [`Oluşturulma Tarihi: ${new Date().toLocaleString('tr-TR')}`],
-                [''],
-                ['Tarih', 'Saat', 'Öğrenci', 'Konu', 'Ücret (TL)']
+                ['DERS RAPORU'], // Ana başlık
+                [`Tarih Aralığı: ${baslangicStr} - ${bitisStr}`], // Filtre tarihi
+                [`Oluşturulma Tarihi: ${new Date().toLocaleString('tr-TR')}`], // Rapor tarihi
+                [''], // Boş satır
+                ['Tarih', 'Saat', 'Öğrenci', 'Konu', 'Ücret (TL)'] // Sütun başlıkları
             ];
 
+            // Toplam ders ücretini hesapla
             let toplamDersUcreti = 0;
+            // Filtrelenmiş dersleri Excel satırlarına dönüştür
             filtreliDersler.forEach(ders => {
                 derslerData.push([
-                    ders.tarih,
-                    ders.saat,
-                    ders.ogrenciAdSoyad || 'Belirtilmemiş',
-                    ders.konu || '-',
-                    parseInt(ders.ucret) || 0
+                    ders.tarih, // Ders tarihi
+                    ders.saat, // Ders saati
+                    ders.ogrenciAdSoyad || 'Belirtilmemiş', // Öğrenci adı (varsayılan değer ile)
+                    ders.konu || '-', // Ders konusu (varsayılan değer ile)
+                    parseInt(ders.ucret) || 0 // Ders ücreti (sayıya çevir, varsayılan 0)
                 ]);
-                toplamDersUcreti += parseInt(ders.ucret) || 0;
+                toplamDersUcreti += parseInt(ders.ucret) || 0; // Toplam ücrete ekle
             });
 
+            // Toplam satırını ekle
             derslerData.push(['', '', '', 'TOPLAM DERS ÜCRETİ:', toplamDersUcreti + ' TL']);
 
+            // Array'i Excel worksheet'e dönüştür ve workbook'a ekle
             const derslerWorksheet = XLSX.utils.aoa_to_sheet(derslerData);
             XLSX.utils.book_append_sheet(workbook, derslerWorksheet, 'Dersler');
 
-            // ÖĞRENCİLER sayfası
+            // ÖĞRENCİLER sayfası - Öğrenci bilgileri
             const ogrencilerData = [
-                ['ÖĞRENCİ BİLGİLERİ'],
-                [`Oluşturulma Tarihi: ${new Date().toLocaleString('tr-TR')}`],
-                [''],
-                ['Ad Soyad', 'Telefon', 'Okul', 'Ders Ücreti', 'Durum']
+                ['ÖĞRENCİ BİLGİLERİ'], // Sayfa başlığı
+                [`Oluşturulma Tarihi: ${new Date().toLocaleString('tr-TR')}`], // Rapor tarihi
+                [''], // Boş satır
+                ['Ad Soyad', 'Telefon', 'Okul', 'Ders Ücreti', 'Durum'] // Sütun başlıkları
             ];
 
+            // Tüm öğrencileri Excel satırlarına dönüştür
             tumOgrenciler.forEach(ogrenci => {
-                const durum = ogrenci.aktifmi ? 'Aktif' : 'Pasif';
+                const durum = ogrenci.aktifmi ? 'Aktif' : 'Pasif'; // Aktiflik durumunu metne çevir
                 ogrencilerData.push([
-                    `${ogrenci.ogrenciAd} ${ogrenci.ogrenciSoyad}`,
-                    ogrenci.ogrenciTel || '-',
-                    ogrenci.okul || '-',
-                    parseInt(ogrenci.ucret) || 0,
-                    durum
+                    `${ogrenci.ogrenciAd} ${ogrenci.ogrenciSoyad}`, // Ad soyad birleştir
+                    ogrenci.ogrenciTel || '-', // Telefon (varsayılan değer ile)
+                    ogrenci.okul || '-', // Okul adı (varsayılan değer ile)
+                    parseInt(ogrenci.ucret) || 0, // Ders ücreti (sayıya çevir)
+                    durum // Aktif/Pasif durumu
                 ]);
             });
 
+            // Öğrenciler worksheet'ini oluştur ve workbook'a ekle
             const ogrencilerWorksheet = XLSX.utils.aoa_to_sheet(ogrencilerData);
             XLSX.utils.book_append_sheet(workbook, ogrencilerWorksheet, 'Öğrenciler');
 
             // BORÇLU ÖĞRENCİLER sayfası (sadece borçlu öğrenciler varsa)
+            // Borç hesaplama daha önce yapıldıysa bu sayfayı ekle
             if (borcluOgrenciler.length > 0) {
                 const borcluOgrencilerData = [
-                    ['BORÇLU ÖĞRENCİLER'],
-                    [`Oluşturulma Tarihi: ${new Date().toLocaleString('tr-TR')}`],
-                    [''],
-                    ['Ad Soyad', 'Toplam Ders Ücreti', 'Toplam Ödeme', 'Kalan Borç']
+                    ['BORÇLU ÖĞRENCİLER'], // Sayfa başlığı
+                    [`Oluşturulma Tarihi: ${new Date().toLocaleString('tr-TR')}`], // Rapor tarihi
+                    [''], // Boş satır
+                    ['Ad Soyad', 'Toplam Ders Ücreti', 'Toplam Ödeme', 'Kalan Borç'] // Sütun başlıkları
                 ];
 
+                // Borçlu öğrencileri Excel satırlarına dönüştür
                 borcluOgrenciler.forEach(ogrenci => {
                     borcluOgrencilerData.push([
-                        `${ogrenci.ogrenciAd} ${ogrenci.ogrenciSoyad}`,
-                        ogrenci.toplamDersUcreti,
-                        ogrenci.toplamOdeme,
-                        ogrenci.kalanBorc
+                        `${ogrenci.ogrenciAd} ${ogrenci.ogrenciSoyad}`, // Öğrenci adı
+                        ogrenci.toplamDersUcreti, // Toplam ders ücreti
+                        ogrenci.toplamOdeme, // Yapılan toplam ödeme
+                        ogrenci.kalanBorc // Kalan borç miktarı
                     ]);
                 });
 
+                // Borçlu öğrenciler worksheet'ini oluştur ve workbook'a ekle
                 const borcluWorksheet = XLSX.utils.aoa_to_sheet(borcluOgrencilerData);
                 XLSX.utils.book_append_sheet(workbook, borcluWorksheet, 'Borçlu Öğrenciler');
             }
 
-            // Excel dosyasını base64 formatında oluştur
-            const excelBuffer = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
+            // Excel dosyasını base64 formatında oluştur - DÜZELTİLDİ
+            // XLSX.write() fonksiyonu workbook'u binary formata çevirir
+            console.log('Workbook oluşturuluyor:', workbook); // Debug için
 
-            // Dosya adını oluştur
+            const excelBuffer = XLSX.write(workbook, {
+                type: 'base64',
+                bookType: 'xlsx',
+                compression: true
+            });
+
+            // Base64 string kontrolü - daha detaylı
+            if (!excelBuffer || typeof excelBuffer !== 'string' || excelBuffer.length === 0) {
+                throw new Error('Excel dosyası oluşturulamadı - geçersiz base64 çıktısı');
+            }
+
+            console.log('Excel buffer oluşturuldu, uzunluk:', excelBuffer.length); // Debug için
+
+            // Dosya adını oluştur - tarih aralığı ve oluşturma zamanı ile
             const dosyaAdi = `ozdeta_rapor_${baslangicStr}_${bitisStr}_${detayliTarihFormatla()}.xlsx`;
 
-            // Doğrudan uygulama klasörüne kaydet
-            const result = await akilliDosyaKaydet(
-                dosyaAdi,
-                excelBuffer,
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            // Doğrudan uygulama klasörüne kaydet (dosyayiDirektKaydet fonksiyonu ile)
+            // Bu fonksiyon dosyayı app directory'ye kaydeder ve paylaşım için hazırlar
+            const result = await dosyayiDirektKaydet(
+                dosyaAdi, // Dosya adı
+                excelBuffer, // Base64 encoded Excel içeriği
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' // MIME type
             );
 
+            // Kaydetme başarılıysa kullanıcıya seçenek sun
             if (result.success) {
-                // Kaydetme başarılı, paylaşım seçeneği sun
+                // Başarılı alert göster - Tamam veya Paylaş seçeneği
                 Alert.alert(
-                    'Excel Raporu Oluşturuldu',
-                    result.message,
+                    'Excel Raporu Oluşturuldu', // Başlık
+                    result.message, // Kaydetme mesajı
                     [
                         {
-                            text: 'Tamam',
+                            text: 'Tamam', // Tamam butonu
                             onPress: () => console.log('Rapor oluşturma tamamlandı')
                         },
                         {
-                            text: 'Paylaş',
+                            text: 'Paylaş', // Paylaş butonu
                             onPress: async () => {
+                                // Sharing API kullanılabilirse dosyayı paylaş
                                 if (await Sharing.isAvailableAsync()) {
                                     await Sharing.shareAsync(result.dosyaYolu, {
                                         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                                        dialogTitle: 'Özdeta Excel Raporu'
+                                        dialogTitle: 'Özdeta Excel Raporu' // Paylaşım dialog başlığı
                                     });
                                 }
                             }
@@ -549,9 +622,11 @@ export default function Ayarlar() {
                     ]
                 );
             } else {
+                // Kaydetme başarısız olursa hata göster
                 Alert.alert('Hata', result.error || 'Excel raporu kaydedilemedi');
             }
 
+            // Rapor modal'ını kapat
             setRaporModalAcik(false);
 
         } catch (error) {
@@ -1100,85 +1175,85 @@ const styles = StyleSheet.create({
 
 // Güvenli kopyalama: kaynakın varlığını kontrol eder; Android content:// URI'leri için base64 yöntemi kullanır.
 async function safeCopyFile(fromUri, toUri) {
-  try {
-    if (!fromUri || !toUri) throw new Error('Kaynak veya hedef yolu boş.');
+    try {
+        if (!fromUri || !toUri) throw new Error('Kaynak veya hedef yolu boş.');
 
-    const isContentUri = Platform.OS === 'android' && fromUri.startsWith('content://');
+        const isContentUri = Platform.OS === 'android' && fromUri.startsWith('content://');
 
-    if (isContentUri) {
-      const data = await FileSystem.readAsStringAsync(fromUri, { encoding: FileSystem.EncodingType.Base64 });
-      await FileSystem.writeAsStringAsync(toUri, data, { encoding: FileSystem.EncodingType.Base64 });
-      return { success: true, path: toUri };
+        if (isContentUri) {
+            const data = await FileSystem.readAsStringAsync(fromUri, { encoding: FileSystem.EncodingType.Base64 });
+            await FileSystem.writeAsStringAsync(toUri, data, { encoding: FileSystem.EncodingType.Base64 });
+            return { success: true, path: toUri };
+        }
+
+        const info = await FileSystem.getInfoAsync(fromUri);
+        if (!info.exists) throw new Error('Kaynak dosya bulunamadı: ' + fromUri);
+
+        const dir = toUri.substring(0, toUri.lastIndexOf('/'));
+        const dirInfo = await FileSystem.getInfoAsync(dir);
+        if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+
+        await FileSystem.copyAsync({ from: fromUri, to: toUri });
+        return { success: true, path: toUri };
+    } catch (err) {
+        console.error('safeCopyFile hata:', err);
+        return { success: false, message: err.message || String(err) };
     }
-
-    const info = await FileSystem.getInfoAsync(fromUri, { size: false });
-    if (!info.exists) throw new Error('Kaynak dosya bulunamadı: ' + fromUri);
-
-    const dir = toUri.substring(0, toUri.lastIndexOf('/'));
-    const dirInfo = await FileSystem.getInfoAsync(dir);
-    if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-
-    await FileSystem.copyAsync({ from: fromUri, to: toUri });
-    return { success: true, path: toUri };
-  } catch (err) {
-    console.error('safeCopyFile hata:', err);
-    return { success: false, message: err.message || String(err) };
-  }
 }
 
 // ozdetaklasorunukontrolet: uygulama için gerekli klasörü doküman dizininde oluşturur
 async function ozdetaklasorunukontrolet() {
-  try {
-    const base = FileSystem.documentDirectory || FileSystem.cacheDirectory;
-    if (!base) throw new Error('Dosya sistemi dizini bulunamadı.');
-    const target = `${base}ozdeta/`;
-    const info = await FileSystem.getInfoAsync(target);
-    if (!info.exists) {
-      await FileSystem.makeDirectoryAsync(target, { intermediates: true });
+    try {
+        const base = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+        if (!base) throw new Error('Dosya sistemi dizini bulunamadı.');
+        const target = `${base}ozdeta/`;
+        const info = await FileSystem.getInfoAsync(target);
+        if (!info.exists) {
+            await FileSystem.makeDirectoryAsync(target, { intermediates: true });
+        }
+        return { success: true, path: target };
+    } catch (err) {
+        console.error('ozdetaklasorunukontrolet hata:', err);
+        return { success: false, message: err.message || String(err) };
     }
-    return { success: true, path: target };
-  } catch (err) {
-    console.error('ozdetaklasorunukontrolet hata:', err);
-    return { success: false, message: err.message || String(err) };
-  }
 }
 
 // veritabaniyedekle: veritabanını güvenli şekilde yedekler
 async function veritabaniyedekle(dbFileRelativePath, targetFileName) {
-  try {
-    const folderRes = await ozdetaklasorunukontrolet();
-    if (!folderRes.success) throw new Error(folderRes.message);
+    try {
+        const folderRes = await ozdetaklasorunukontrolet();
+        if (!folderRes.success) throw new Error(folderRes.message);
 
-    const dest = `${folderRes.path}${targetFileName || 'veritabani_yedek.sqlite'}`;
+        const dest = `${folderRes.path}${targetFileName || 'veritabani_yedek.sqlite'}`;
 
-    // Not: SQLite açık bağlantı sorunları uygulama mimarisine göre ele alınmalı.
-    const copyResult = await safeCopyFile(dbFileRelativePath, dest);
-    if (!copyResult.success) throw new Error(copyResult.message);
+        // Not: SQLite açık bağlantı sorunları uygulama mimarisine göre ele alınmalı.
+        const copyResult = await safeCopyFile(dbFileRelativePath, dest);
+        if (!copyResult.success) throw new Error(copyResult.message);
 
-    return { success: true, path: dest };
-  } catch (err) {
-    console.error('veritabaniyedekle hata:', err);
-    return { success: false, message: err.message || String(err) };
-  }
+        return { success: true, path: dest };
+    } catch (err) {
+        console.error('veritabaniyedekle hata:', err);
+        return { success: false, message: err.message || String(err) };
+    }
 }
 
 // dosyayidirektkaydet: seçilen bir dosyayı doğrudan ozdeta klasörüne kaydeder
 async function dosyayidirektkaydet(pickedDocument, targetFileName) {
-  try {
-    if (!pickedDocument) throw new Error('Seçilen dosya yok.');
-    const { uri, name } = pickedDocument;
-    const folderRes = await ozdetaklasorunukontrolet();
-    if (!folderRes.success) throw new Error(folderRes.message);
+    try {
+        if (!pickedDocument) throw new Error('Seçilen dosya yok.');
+        const { uri, name } = pickedDocument;
+        const folderRes = await ozdetaklasorunukontrolet();
+        if (!folderRes.success) throw new Error(folderRes.message);
 
-    const finalName = targetFileName || name || `dosya_${Date.now()}`;
-    const dest = `${folderRes.path}${finalName}`;
+        const finalName = targetFileName || name || `dosya_${Date.now()}`;
+        const dest = `${folderRes.path}${finalName}`;
 
-    const copyResult = await safeCopyFile(uri, dest);
-    if (!copyResult.success) throw new Error(copyResult.message);
+        const copyResult = await safeCopyFile(uri, dest);
+        if (!copyResult.success) throw new Error(copyResult.message);
 
-    return { success: true, path: dest };
-  } catch (err) {
-    console.error('dosyayidirektkaydet hata:', err);
-    return { success: false, message: err.message || String(err) };
-  }
+        return { success: true, path: dest };
+    } catch (err) {
+        console.error('dosyayidirektkaydet hata:', err);
+        return { success: false, message: err.message || String(err) };
+    }
 }

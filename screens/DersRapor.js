@@ -179,28 +179,6 @@ export default function DersRapor() {
             </View>
 
             <ScrollView style={styles.content}>
-                {/* Özet Bilgiler */}
-                <View style={styles.ozetContainer}>
-                    <View style={styles.ozetItem}>
-                        <Text style={styles.ozetLabel}>Toplam Ders</Text>
-                        <Text style={styles.ozetDeger}>{dersler.length}</Text>
-                    </View>
-                    <View style={styles.ozetItem}>
-                        <Text style={styles.ozetLabel}>Ders Ücreti</Text>
-                        <Text style={styles.ozetDeger}>{toplamDersUcreti()} TL</Text>
-                    </View>
-                    <View style={styles.ozetItem}>
-                        <Text style={styles.ozetLabel}>Ödenen</Text>
-                        <Text style={styles.ozetDeger}>{toplamOdeme()} TL</Text>
-                    </View>
-                    <View style={styles.ozetItem}>
-                        <Text style={styles.ozetLabel}>Kalan</Text>
-                        <Text style={[styles.ozetDeger, { color: kalanUcret() > 0 ? '#e74c3c' : '#27ae60' }]}>
-                            {kalanUcret()} TL
-                        </Text>
-                    </View>
-                </View>
-
                 {/* Dersler Bölümü */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Yapılan Dersler ({dersler.length})</Text>
@@ -234,6 +212,28 @@ export default function DersRapor() {
                 {/* Ödemeler Bölümü */}
                 {odemeRaporAcik && (
                     <View style={styles.section}>
+                        {/* Özet Bilgiler - Ödeme raporunun içine taşındı */}
+                        <View style={styles.ozetContainer}>
+                            <View style={styles.ozetItem}>
+                                <Text style={styles.ozetLabel}>Toplam Ders</Text>
+                                <Text style={styles.ozetDeger}>{dersler.length}</Text>
+                            </View>
+                            <View style={styles.ozetItem}>
+                                <Text style={styles.ozetLabel}>Ders Ücreti</Text>
+                                <Text style={styles.ozetDeger}>{toplamDersUcreti()} TL</Text>
+                            </View>
+                            <View style={styles.ozetItem}>
+                                <Text style={styles.ozetLabel}>Ödenen</Text>
+                                <Text style={styles.ozetDeger}>{toplamOdeme()} TL</Text>
+                            </View>
+                            <View style={styles.ozetItem}>
+                                <Text style={styles.ozetLabel}>Kalan</Text>
+                                <Text style={[styles.ozetDeger, { color: kalanUcret() > 0 ? '#e74c3c' : '#27ae60' }]}>
+                                    {kalanUcret()} TL
+                                </Text>
+                            </View>
+                        </View>
+
                         <Text style={styles.sectionTitle}>Alınan Ödemeler ({odemeler.length})</Text>
                         {odemeler.length > 0 ? (
                             <>
