@@ -20,6 +20,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { useNavigation } from '@react-navigation/native';
+import * as XLSX from 'xlsx';
 
 // Array buffer'ı base64'e çeviren yardımcı fonksiyon
 function arrayBufferToBase64(buffer) {
