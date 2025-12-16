@@ -21,6 +21,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { useNavigation } from '@react-navigation/native';
 import * as XLSX from 'xlsx';
+import * as Permissions from 'expo-permissions';
 
 // Array buffer'ı base64'e çeviren yardımcı fonksiyon
 function arrayBufferToBase64(buffer) {
@@ -55,8 +56,91 @@ export default function Ayarlar() {
     const [bitisPickerAcik, setBitisPickerAcik] = useState(false);
 
     useEffect(() => {
-        borcluOgrencileriHesapla();
+        uygulamaBaslat();
     }, []);
+
+    /**
+     * Uygulama başlatıldığında gerekli izinleri al ve klasörleri hazırla
+     */
+    const uygulamaBaslat = async () => {
+        try {
+            await izinleriAl();
+            await downloadsKlasoruHazirla();
+            borcluOgrencileriHesapla();
+        } catch (error) {
+            console.error('Uygulama başlatma hatası:', error);
+        }
+    };
+
+    /**
+     * Gerekli tüm izinleri al
+     */
+    const izinleriAl = async () => {
+        try {
+            console.log('İzinler kontrol ediliyor...');
+
+            // Media Library (Dosya erişimi) izni
+            const mediaLibraryIzni = await MediaLibrary.requestPermissionsAsync();
+            if (mediaLibraryIzni.status !== 'granted') {
+                Alert.alert(
+                    'İzin Gerekli',
+                    'Dosya erişimi için izin vermeniz gerekiyor.',
+                    [{ text: 'Tamam' }]
+                );
+            }
+
+            // Dosya sistemi izinleri (Android için)
+            if (Platform.OS === 'android') {
+                // READ_EXTERNAL_STORAGE ve WRITE_EXTERNAL_STORAGE izinleri
+                const dosyaIzni = await Permissions.askAsync(Permissions.MEDIA_LIBRARY);
+                console.log('Dosya izni:', dosyaIzni);
+
+                // SMS izni
+                const smsIzni = await Permissions.askAsync(Permissions.SMS);
+                console.log('SMS izni:', smsIzni);
+
+                // Telefon izni
+                const telefonIzni = await Permissions.askAsync(Permissions.CONTACTS);
+                console.log('Telefon izni:', telefonIzni);
+            }
+
+            console.log('İzinler kontrol edildi.');
+        } catch (error) {
+            console.error('İzin alma hatası:', error);
+        }
+    };
+
+    /**
+     * Downloads klasöründe ozdeta klasörünü kontrol et ve oluştur
+     */
+    const downloadsKlasoruHazirla = async () => {
+        try {
+            console.log('Downloads/ozdeta klasörü kontrol ediliyor...');
+
+            if (Platform.OS === 'android') {
+                // MediaLibrary kullanarak Downloads klasörüne erişim
+                const { status } = await MediaLibrary.requestPermissionsAsync();
+                if (status === 'granted') {
+                    const albums = await MediaLibrary.getAlbumsAsync();
+                    let downloadsAlbum = albums.find(album => album.title === 'Downloads');
+
+                    if (!downloadsAlbum) {
+                        // Downloads album yoksa oluştur
+                        console.log('Downloads album bulunamadı, oluşturuluyor...');
+                        downloadsAlbum = await MediaLibrary.createAlbumAsync('Downloads', null, false);
+                    }
+
+                    console.log('Downloads klasörü hazır.');
+                } else {
+                    console.warn('MediaLibrary izni verilmedi');
+                }
+            }
+
+            console.log('Downloads/ozdeta klasörü hazırlandı.');
+        } catch (error) {
+            console.error('Downloads klasörü hazırlama hatası:', error);
+        }
+    };
 
     /**
      * Detaylı tarih formatı oluşturma
@@ -301,6 +385,7 @@ export default function Ayarlar() {
                                 // Downloads klasörüne kaydet - Android için MediaLibrary kullan
                                 if (Platform.OS === 'android') {
                                     try {
+                                        // İzinleri tekrar kontrol et
                                         const { status } = await MediaLibrary.requestPermissionsAsync();
                                         if (status === 'granted') {
                                             // Geçici dosyayı oluştur
@@ -315,8 +400,10 @@ export default function Ayarlar() {
                                             let downloadsAlbum = albums.find(album => album.title === 'Downloads');
 
                                             if (!downloadsAlbum) {
+                                                // Downloads album yoksa oluştur
                                                 downloadsAlbum = await MediaLibrary.createAlbumAsync('Downloads', asset, false);
                                             } else {
+                                                // Var olan Downloads album'ına ekle
                                                 await MediaLibrary.addAssetsToAlbumAsync([asset], downloadsAlbum, false);
                                             }
 
@@ -325,11 +412,11 @@ export default function Ayarlar() {
 
                                             Alert.alert(
                                                 'Yedekleme Başarılı',
-                                                `Veritabanı Downloads/ozdeta klasörüne "${yedekDosyaAdi}" olarak kaydedildi.`,
+                                                `Veritabanı Downloads klasörüne "${yedekDosyaAdi}" olarak kaydedildi.`,
                                                 [{ text: 'Tamam' }]
                                             );
                                         } else {
-                                            Alert.alert('Hata', 'Dosya erişim izni verilmedi');
+                                            Alert.alert('Hata', 'Dosya erişim izni verilmedi. Lütfen uygulama ayarlarından izin verin.');
                                         }
                                     } catch (mediaError) {
                                         console.error('MediaLibrary hatası:', mediaError);
@@ -340,7 +427,7 @@ export default function Ayarlar() {
                                             'application/x-sqlite3'
                                         );
                                         if (result.success) {
-                                            Alert.alert('Yedekleme Başarılı', result.message);
+                                            Alert.alert('Yedekleme Başarılı', result.message + '\n(Not: Dosya uygulama klasörüne kaydedildi)');
                                         } else {
                                             Alert.alert('Hata', result.error || 'Yedekleme başarısız');
                                         }
